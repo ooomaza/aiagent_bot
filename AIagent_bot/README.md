@@ -22,10 +22,53 @@
 
 Проект спроектирован по принципу **микросервисной архитектуры**. Каждый клиент получает изолированный процесс агента, чтобы падение одного бота не ломало работу всей платформы.
 
+```mermaid
+graph TD
+    Client[👤 Клиент] -->|1. Покупает тариф| MainBot[🤖 Главный бот]
+    MainBot -->|2. Вставляет токен| Agent[🧠 AI-Агент]
+    Lead[👥 Лид] -->|3. Пишет сообщение| Agent
+    Agent <-->|4. Запросы к AI| DeepSeek[⚡ DeepSeek API]
+    Agent -->|5. Сохраняет данные| DB[(💾 SQLite БД)]
+    Agent -->|6. Если лид горячий| MainBot
+    MainBot -->|7. Присылает уведомление| Client
+    Agent -->|8. Сделки| CRM[📊 CRM Amo/Bitrix]
+```
+
 - **Главный бот (`bot_main.py`)** — точка входа. Продажи, оплата (Telegram Stars), активация агентов, настройки.
 - **AI-Агент (`bot_agent.py`)** — отдельный процесс для каждого клиента. Общение с лидами через DeepSeek AI, фильтрация, RAG-поиск.
 - **Админ-бот (`bot_admin.py`)** — панель владельца платформы. Управление клиентами, платежами, мониторинг упавших агентов.
 - **База данных** — SQLite с WAL-режимом для параллельной записи из всех процессов.
+
+```mermaid
+erDiagram
+    USERS ||--o{ LEADS : "владеет"
+    USERS ||--o{ PAYMENTS : "совершает"
+    USERS ||--o{ NOTIFICATIONS : "получает"
+
+    USERS {
+        int user_id PK
+        string tariff
+        string bot_token_encrypted
+        json bot_settings
+        json crm_integration
+    }
+
+    LEADS {
+        int id PK
+        int client_id FK
+        int lead_telegram_id
+        int score
+        boolean is_hot
+        json facts
+    }
+
+    PAYMENTS {
+        int id PK
+        int user_id FK
+        string telegram_payment_charge_id
+        int amount_stars
+    }
+```
 
 ### 🛠️ Как это работает (Бизнес-поток)
 
@@ -38,6 +81,18 @@
 ---
 
 ## ✨ Ключевые возможности
+
+```mermaid
+flowchart TD
+    Msg[📩 Лид пишет сообщение] --> AI[🧠 DeepSeek AI анализирует]
+    AI --> Extract[🔍 Извлечение данных: Бюджет, Сроки, Проблема]
+    Extract --> Score[📊 Подсчет Lead Score 0-100]
+    
+    Score --> Check{Горячий лид?}
+    
+    Check -->|Да: Бюджет > порога, Сроки < порога| Hot[🔥 Отправить уведомление владельцу + CRM]
+    Check -->|Нет| Cold[📚 Отправить материалы + Запустить реаниматор]
+```
 
 ### 🎯 Для клиента (Владельца бизнеса)
 - 💳 **Оплата:** Интеграция с Telegram Stars и ручной перевод на карту.
@@ -65,6 +120,35 @@
 ---
 
 ## 🛠️ Стек технологий
+
+```mermaid
+graph TD
+    subgraph Client Layer
+        User[👤 Telegram Client]
+    end
+    
+    subgraph Framework Layer
+        PTB[🐍 python-telegram-bot 21.7]
+    end
+    
+    subgraph Logic Layer
+        Python[⚙️ Python 3.11]
+        Async[🚀 aiohttp]
+    end
+    
+    subgraph AI & Data Layer
+        AI[⚡ DeepSeek API]
+        DB[(💾 SQLite 3 WAL)]
+        CRM[📊 CRM APIs]
+    end
+
+    User <-->|Общение| PTB
+    PTB -->|Обработка| Python
+    Python -->|Асинхронные запросы| Async
+    Async -->|Запрос к AI| AI
+    Async -->|Чтение/Запись| DB
+    Async -->|Синхронизация| CRM
+```
 
 | Слой | Технология | Зачем используется |
 | :--- | :--- | :--- |
